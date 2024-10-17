@@ -1,4 +1,6 @@
-# Arduino Due software 
+# Nucleo F446re CableRobot
+
+PlatformIO
 
 to control 8 steppers to move an object
 
