@@ -1,12 +1,11 @@
-long Pythagoras(long X, long Y, long Z) {
+float Pythagoras(float X, float Y, float Z)
+{
+  float TmpXkwadraat = X * X;
+  float TmpYKwadraat = Y * Y;
+  float TmpZKwadraat = Z * Z;
 
-  long TmpXkwadraat = X * X;
-  long TmpYKwadraat = Y * Y;
-  long TmpZKwadraat = Z * Z;
-  
-  long result;
+  float result;
 
   result = sqrt(TmpXkwadraat + TmpYKwadraat + TmpZKwadraat);
   return result;
-
 };

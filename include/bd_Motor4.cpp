@@ -1,14 +1,5 @@
 void Motor4()
 {
-  //Serial.print("Direction : ");
-  //Serial.print(Mot4Direction);
-  //Serial.print(" Procent : ");
-  //Serial.println(Mot4PulseProcent);
- if(Mot4PulseProcent<1)
- {
-  Mot4PulseProcent=1;
- }
-
   Mot4Direction = 0;
   if (Mot4WantedLength > Mot4ActualLength)
   {
@@ -16,33 +7,26 @@ void Motor4()
   }
 
   Pulse4 = 0;
-  if (Mot4On == 1)
+  if (Mot4WantedLength != Mot4ActualLength)
   {
-    if (Pulse == 1)
+    if (Mot4PulseCounter >= (StepSpeed / Mot4PulseProcent))
     {
-      if (Mot4WantedLength != Mot4ActualLength)
+      Pulse4 = 1;
+      Mot4PulseCounter = 0;
+
+      if (Mot4Direction == 1)
       {
-
-        if (Mot4PulseCounter >= (StepSpeed / Mot4PulseProcent))
-        {
-          Pulse4 = 1;
-          Mot4PulseCounter = 0;
-
-          if (Mot4Direction == 1)
-          {
-            Mot4ActualLength = Mot4ActualLength + 1;
-          }
-          else
-          {
-            Mot4ActualLength = Mot4ActualLength - 1;
-          };
-        };
+        Mot4ActualLength = Mot4ActualLength + 1;
+      }
+      else
+      {
+        Mot4ActualLength = Mot4ActualLength - 1;
       };
-
-      Mot4PulseCounter = Mot4PulseCounter + 1;
-
-      digitalWrite(oDir4, Mot4Direction);
-      digitalWrite(oStep4, Pulse4);
     };
   };
+
+  Mot4PulseCounter = Mot4PulseCounter + 1;
+
+  digitalWrite(oDir4, Mot4Direction);
+  digitalWrite(oStep4, Pulse4);
 };

@@ -1,6 +1,3 @@
-
-// Arjan Swets
-
 #include <Arduino.h>
 
 //-------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -33,6 +30,7 @@ int steplength = 1;
 // alle maten voorlopig in mm
 
 // gemeten stappen/mm ~250
+
 float StepUnit = 250.0;
 
 bool AutoMove = 0;
@@ -41,7 +39,7 @@ int AutoCnt = 0;
 
 float phi = 3.141592653589;
 
-float StepSpeed = 500;
+float StepSpeed = 200;
 
 float LengthBlockBottom = 118;
 float WidthBlockBottom = 48;
@@ -50,11 +48,12 @@ float HighBlock = 41;
 float LengthBlockTop = 68;
 float WidthBlockTop = 78;
 
-float LengthFrame = 320;
-float WidhtFrame = 200;
-float HighFrame = 280;
+float LengthFrame = 325;
+float WidhtFrame = 210;
+float HighFrame = 208;
 
-float DiaKatrol = 21.40;
+float DiaPulley = 21.40;
+float RadiusPulley = DiaPulley / 2.0;
 
 float ActualMainX;
 float ActualMainY;
@@ -82,6 +81,20 @@ float Procent100;
 bool CalibrationIsOn = true;
 bool go = false;
 
+// SIMTOOLS INTEGRATION VARIABLES
+bool simToolsMode = false;
+unsigned long lastSimToolsData = 0;
+unsigned long lastSimHubData = 0;  // ADDED FOR SIMHUB SUPPORT
+const unsigned long SIMTOOLS_TIMEOUT = 1000;
+
+// Motion scaling factors (pas aan voor jouw workspace)
+const float SIMTOOLS_ROTATION_SCALE = 0.15;     // 15% van max rotatie
+const float SIMTOOLS_TRANSLATION_SCALE = 0.1;   // 10% van max translatie
+
+// Workspace limits (in mm en graden)  
+const float MAX_TRANSLATION = 25.0;  // ±25mm veilig
+const float MAX_ROTATION = 6.0;      // ±6° veilig
+
 struct Coordinate
 {
   float X;
@@ -94,29 +107,34 @@ struct Rotation
   float Y;
   float Z;
 };
-struct Coordinate ObjectCorner[9];
+struct Coordinate ObjectCorner[8];
 
-struct Coordinate NewPosition[20] = {{0, 0, 30},
-                                     {0, 0, 0},
+struct Coordinate NewPosition[24] = {{0, 0, 0},
+                                     {0, 0, -5},
+                                     {0, 0, -10},
+                                     {0, 0, -15},
+                                     {0, 0, -20},
+                                     {0, 0, -25},
                                      {0, 0, -30},
+                                     {0, 0, -25},
+                                     {0, 0, -20},
+                                     {0, 0, -15},
+                                     {0, 0, -10},
+                                     {0, 0, -5},
                                      {0, 0, 0},
-                                     {0, 30, 0},
-                                     {0, 0, 0},
-                                     {0, -30, 0},
-                                     {0, 0, 0},
-                                     {30, 0, 0},
-                                     {0, 0, 0},
-                                     {-30, 0, 0},
-                                     {0, 0, 0},
-                                     {0, 0, 0},
-                                     {0, 0, 0},
-                                     {0, 0, 0},
-                                     {0, 0, 0},
-                                     {0, 0, 0},
-                                     {0, 0, 0},
-                                     {0, 0, 0},
-                                     {0, 0, 0}};
-struct Rotation NewRotation[20] = {{0, 0, 0},
+                                     {0, 0, 5},
+                                     {0, 0, 10},
+                                     {0, 0, 15},
+                                     {0, 0, 20},
+                                     {0, 0, 25},
+                                     {0, 0, 30},
+                                     {0, 0, 25},
+                                     {0, 0, 20},
+                                     {0, 0, 15},
+                                     {0, 0, 10},
+                                     {0, 0, 5}};
+
+struct Rotation NewRotation[24] = {{0, 0, 0},
                                    {0, 0, 0},
                                    {0, 0, 0},
                                    {0, 0, 0},
@@ -128,13 +146,17 @@ struct Rotation NewRotation[20] = {{0, 0, 0},
                                    {0, 0, 0},
                                    {0, 0, 0},
                                    {0, 0, 0},
-                                   {45, 0, 0},
                                    {0, 0, 0},
-                                   {-45, 0, 0},
                                    {0, 0, 0},
-                                   {0, 30, 0},
                                    {0, 0, 0},
-                                   {0, -30, 0},
+                                   {0, 0, 0},
+                                   {0, 0, 0},
+                                   {0, 0, 0},
+                                   {0, 0, 0},
+                                   {0, 0, 0},
+                                   {0, 0, 0},
+                                   {0, 0, 0},
+                                   {0, 0, 0},
                                    {0, 0, 0}};
 
 #define LED_BUILTIN_Green PA5
@@ -156,81 +178,107 @@ struct Rotation NewRotation[20] = {{0, 0, 0},
 #define oStep8 PC8
 
 //----------------------------------------------------------------------------------------------
-bool Mot1On = 0;
 bool Mot1Direction = 0;
 long Mot1WantedLength;
 long Mot1ActualLength;
 int Mot1PulseProcent;
 int Mot1PulseCounter;
 bool Pulse1 = 0;
+
+float XCorner1 = -(LengthFrame / 2.0);
+float yCorner1 = -(WidhtFrame / 2.0);
+float zCorner1 = (HighFrame / 2.0);
 //----------------------------------------------------------------------------------------------
-bool Mot2On = 0;
 bool Mot2Direction = 0;
 long Mot2WantedLength;
 long Mot2ActualLength;
 int Mot2PulseProcent;
 int Mot2PulseCounter;
 bool Pulse2 = 0;
+
+float XCorner2 = -(LengthFrame / 2);
+float yCorner2 = (WidhtFrame / 2);
+float zCorner2 = (HighFrame / 2);
 //----------------------------------------------------------------------------------------------
-bool Mot3On = 0;
 bool Mot3Direction = 0;
 long Mot3WantedLength;
 long Mot3ActualLength;
 int Mot3PulseProcent;
 int Mot3PulseCounter;
 bool Pulse3 = 0;
+
+float XCorner3 = (LengthFrame / 2);
+float yCorner3 = -(WidhtFrame / 2);
+float zCorner3 = (HighFrame / 2);
 //----------------------------------------------------------------------------------------------
-bool Mot4On = 0;
 bool Mot4Direction = 0;
 long Mot4WantedLength;
 long Mot4ActualLength;
 int Mot4PulseProcent;
 int Mot4PulseCounter;
 bool Pulse4 = 0;
+
+float XCorner4 = (LengthFrame / 2);
+float yCorner4 = (WidhtFrame / 2);
+float zCorner4 = (HighFrame / 2);
 //----------------------------------------------------------------------------------------------
-bool Mot5On = 0;
 bool Mot5Direction = 0;
 long Mot5WantedLength;
 long Mot5ActualLength;
 int Mot5PulseProcent;
 int Mot5PulseCounter;
 bool Pulse5 = 0;
+
+float XCorner5 = -(LengthFrame / 2);
+float yCorner5 = -(WidhtFrame / 2);
+float zCorner5 = -(HighFrame / 2);
 //----------------------------------------------------------------------------------------------
-bool Mot6On = 0;
 bool Mot6Direction = 0;
 long Mot6WantedLength;
 long Mot6ActualLength;
 int Mot6PulseProcent;
 int Mot6PulseCounter;
 bool Pulse6 = 0;
+
+float XCorner6 = -(LengthFrame / 2);
+float yCorner6 = (WidhtFrame / 2);
+float zCorner6 = -(HighFrame / 2);
 //----------------------------------------------------------------------------------------------
-bool Mot7On = 0;
 bool Mot7Direction = 0;
 long Mot7WantedLength;
 long Mot7ActualLength;
 int Mot7PulseProcent;
 int Mot7PulseCounter;
 bool Pulse7 = 0;
+
+float XCorner7 = (LengthFrame / 2);
+float yCorner7 = -(WidhtFrame / 2);
+float zCorner7 = -(HighFrame / 2);
 //----------------------------------------------------------------------------------------------
-bool Mot8On = 0;
 bool Mot8Direction = 0;
 long Mot8WantedLength;
 long Mot8ActualLength;
 int Mot8PulseProcent;
 int Mot8PulseCounter;
 bool Pulse8 = 0;
+
+float XCorner8 = (LengthFrame / 2);
+float yCorner8 = (WidhtFrame / 2);
+float zCorner8 = -(HighFrame / 2);
 //----------------------------------------------------------------------------------------------
 
 int incomingByte = 0;
 
-bool Pulse = 0;
-bool PulseOld = 0;
-int PulseCounter = 0;
-bool CalAgain = 0;
+HardwareTimer timer(TIM1);
+
+// Function declarations - MUST BE BEFORE INCLUDES
+void parseSimHubMotion(String data);  // ADDED FOR SIMHUB SUPPORT
 
 #include "ab_Pythagoras.cpp"
+#include "acos1.cpp"
 
 #include "ag_ParseData.cpp"
+#include "ah_ParseSimHubMotion.cpp"  // ADDED FOR SIMHUB SUPPORT
 
 #include "ac_MatrixTrans.cpp"
 #include "ad_MatrixRotX.cpp"
@@ -255,13 +303,46 @@ bool CalAgain = 0;
 #include "cc_Motor7.cpp"
 #include "cd_Motor8.cpp"
 
+// SimTools timeout check functie
+void checkSimToolsTimeout() {
+  if (simToolsMode && (millis() - lastSimToolsData > SIMTOOLS_TIMEOUT)) {
+    // Return to center bij timeout
+    WantedMainX = 0;
+    WantedMainY = 0;
+    WantedMainZ = 0;
+    WantedRotX = 0;
+    WantedRotY = 0;
+    WantedRotZ = 0;
+    
+    simToolsMode = false;
+    Serial.println("SimTools timeout - returning to center");
+  }
+}
+
+void OnTimer1Interrupt()
+{
+  //------------------------------------------------------------------------------------
+  // Control Motors
+  if (Inpos == 0)
+  {
+    Motor1();
+    Motor2();
+    Motor3();
+    Motor4();
+    //
+    Motor5();
+    Motor6();
+    Motor7();
+    Motor8();
+  };
+}
+
 void setup()
 {
-
   Serial.begin(115200);
   while (!Serial.available())
     ;
-  Serial.println("Communication Active");
+  Serial.println("Communication Active - SimTools + SimHub Ready");  // UPDATED MESSAGE
 
   pinMode(LED_BUILTIN_Green, OUTPUT);
   digitalWrite(LED_BUILTIN_Green, HIGH);
@@ -291,106 +372,98 @@ void setup()
   pinMode(oStep8, OUTPUT);
 
   // Setup Array by start programma
-  ObjectCorner[1].X = ActualMainX - (LengthBlockBottom / 2.0);
-  ObjectCorner[1].Y = ActualMainY - (WidthBlockBottom / 2.0);
-  ObjectCorner[1].Z = ActualMainZ - (HighBlock / 2.0);
-
-  Mot1ActualLength = Mot1(ObjectCorner[1].X, ObjectCorner[1].Y, ObjectCorner[1].Z);
+  ObjectCorner[0].X = ActualMainX - (LengthBlockBottom / 2.0);
+  ObjectCorner[0].Y = ActualMainY - (WidthBlockBottom / 2.0);
+  ObjectCorner[0].Z = ActualMainZ - (HighBlock / 2.0);
+  Mot1ActualLength = Mot1(ObjectCorner[0].X, ObjectCorner[0].Y, ObjectCorner[0].Z);
   Mot1WantedLength = Mot1ActualLength;
 
-  ObjectCorner[2].X = ActualMainX - (LengthBlockBottom / 2.0);
-  ObjectCorner[2].Y = ActualMainY + (WidthBlockBottom / 2.0);
-  ObjectCorner[2].Z = ActualMainZ - (HighBlock / 2.0);
-
-  Mot2ActualLength = Mot2(ObjectCorner[2].X, ObjectCorner[2].Y, ObjectCorner[2].Z);
+  ObjectCorner[1].X = ActualMainX - (LengthBlockBottom / 2.0);
+  ObjectCorner[1].Y = ActualMainY + (WidthBlockBottom / 2.0);
+  ObjectCorner[1].Z = ActualMainZ - (HighBlock / 2.0);
+  Mot2ActualLength = Mot2(ObjectCorner[1].X, ObjectCorner[1].Y, ObjectCorner[1].Z);
   Mot2WantedLength = Mot2ActualLength;
 
-  ObjectCorner[3].X = ActualMainX + (LengthBlockBottom / 2.0);
-  ObjectCorner[3].Y = ActualMainY - (WidthBlockBottom / 2.0);
-  ObjectCorner[3].Z = ActualMainZ - (HighBlock / 2.0);
-
-  Mot3ActualLength = Mot3(ObjectCorner[3].X, ObjectCorner[3].Y, ObjectCorner[3].Z);
+  ObjectCorner[2].X = ActualMainX + (LengthBlockBottom / 2.0);
+  ObjectCorner[2].Y = ActualMainY - (WidthBlockBottom / 2.0);
+  ObjectCorner[2].Z = ActualMainZ - (HighBlock / 2.0);
+  Mot3ActualLength = Mot3(ObjectCorner[2].X, ObjectCorner[2].Y, ObjectCorner[2].Z);
   Mot3WantedLength = Mot3ActualLength;
 
-  ObjectCorner[4].X = ActualMainX + (LengthBlockBottom / 2.0);
-  ObjectCorner[4].Y = ActualMainY + (WidthBlockBottom / 2.0);
-  ObjectCorner[4].Z = ActualMainZ - (HighBlock / 2.0);
-
-  Mot4ActualLength = Mot4(ObjectCorner[4].X, ObjectCorner[4].Y, ObjectCorner[4].Z);
+  ObjectCorner[3].X = ActualMainX + (LengthBlockBottom / 2.0);
+  ObjectCorner[3].Y = ActualMainY + (WidthBlockBottom / 2.0);
+  ObjectCorner[3].Z = ActualMainZ - (HighBlock / 2.0);
+  Mot4ActualLength = Mot4(ObjectCorner[3].X, ObjectCorner[3].Y, ObjectCorner[3].Z);
   Mot4WantedLength = Mot4ActualLength;
 
-  ObjectCorner[5].X = ActualMainX - (LengthBlockBottom / 2.0);
-  ObjectCorner[5].Y = ActualMainY - (WidthBlockBottom / 2.0);
-  ObjectCorner[5].Z = ActualMainZ + (HighBlock / 2.0);
-
-  Mot5ActualLength = Mot5(ObjectCorner[5].X, ObjectCorner[5].Y, ObjectCorner[5].Z);
+  ObjectCorner[4].X = ActualMainX - (LengthBlockTop / 2.0);
+  ObjectCorner[4].Y = ActualMainY - (WidthBlockTop / 2.0);
+  ObjectCorner[4].Z = ActualMainZ + (HighBlock / 2.0);
+  Mot5ActualLength = Mot5(ObjectCorner[4].X, ObjectCorner[4].Y, ObjectCorner[4].Z);
   Mot5WantedLength = Mot5ActualLength;
 
-  ObjectCorner[6].X = ActualMainX - (LengthBlockBottom / 2.0);
-  ObjectCorner[6].Y = ActualMainY + (WidthBlockBottom / 2.0);
-  ObjectCorner[6].Z = ActualMainZ + (HighBlock / 2.0);
-
-  Mot6ActualLength = Mot6(ObjectCorner[6].X, ObjectCorner[6].Y, ObjectCorner[6].Z);
+  ObjectCorner[5].X = ActualMainX - (LengthBlockTop / 2.0);
+  ObjectCorner[5].Y = ActualMainY + (WidthBlockTop / 2.0);
+  ObjectCorner[5].Z = ActualMainZ + (HighBlock / 2.0);
+  Mot6ActualLength = Mot6(ObjectCorner[5].X, ObjectCorner[5].Y, ObjectCorner[5].Z);
   Mot6WantedLength = Mot6ActualLength;
 
-  ObjectCorner[7].X = ActualMainX + (LengthBlockBottom / 2.0);
-  ObjectCorner[7].Y = ActualMainY - (WidthBlockBottom / 2.0);
-  ObjectCorner[7].Z = ActualMainZ + (HighBlock / 2.0);
-
-  Mot7ActualLength = Mot7(ObjectCorner[7].X, ObjectCorner[7].Y, ObjectCorner[7].Z);
+  ObjectCorner[6].X = ActualMainX + (LengthBlockTop / 2.0);
+  ObjectCorner[6].Y = ActualMainY - (WidthBlockTop / 2.0);
+  ObjectCorner[6].Z = ActualMainZ + (HighBlock / 2.0);
+  Mot7ActualLength = Mot7(ObjectCorner[6].X, ObjectCorner[6].Y, ObjectCorner[6].Z);
   Mot7WantedLength = Mot7ActualLength;
 
-  ObjectCorner[8].X = ActualMainX + (LengthBlockBottom / 2.0);
-  ObjectCorner[8].Y = ActualMainY + (WidthBlockBottom / 2.0);
-  ObjectCorner[8].Z = ActualMainZ + (HighBlock / 2.0);
-
-  Mot8ActualLength = Mot8(ObjectCorner[8].X, ObjectCorner[8].Y, ObjectCorner[8].Z);
+  ObjectCorner[7].X = ActualMainX + (LengthBlockTop / 2.0);
+  ObjectCorner[7].Y = ActualMainY + (WidthBlockTop / 2.0);
+  ObjectCorner[7].Z = ActualMainZ + (HighBlock / 2.0);
+  Mot8ActualLength = Mot8(ObjectCorner[7].X, ObjectCorner[7].Y, ObjectCorner[7].Z);
   Mot8WantedLength = Mot8ActualLength;
+
+  // Configure timer
+  timer.setPrescaleFactor(2564);              // Set prescaler to 2564 => timer frequency = 168MHz/2564 = 65522 Hz (from prediv'd by 1 clocksource of 168 MHz)
+  timer.setOverflow(10);                      // Set overflow to 32761 => timer frequency = 65522 Hz / 32761 = 2 Hz
+  timer.attachInterrupt(OnTimer1Interrupt);
+  timer.refresh();                            // Make register changes take effect
+  timer.resume();                             // Start
 }
 
 void loop()
 {
-
-  digitalWrite(LED_BUILTIN_Green, Pulse);
-
+  // Simplified serial handling for SimTools
   if (Serial.available())
   {
     char c = Serial.read();
-    Serial.println(c);
-    if (c == '\n')
+    
+    if (c == '\n')  // End of line
     {
-      ParseCommand(CommandFromPC);
+      if (CommandFromPC.length() > 0) {
+        // Remove any \r characters
+        CommandFromPC.replace("\r", "");
+        
+        // Process command (SimTools or manual)
+        ParseCommand(CommandFromPC);
+      }
+      
       CommandFromPC = "";
     }
-    else
+    else if (c != '\r')  // Ignore carriage return, but keep other chars
     {
       CommandFromPC += c;
     }
   }
 
-  //=====================================================================================================
-  // Create pulses
-  Pulse = Pulse xor 1; // invert pulse
+  // SimTools timeout check
+  checkSimToolsTimeout();
 
-  if (Pulse > PulseOld)
-  {
-    PulseCounter = PulseCounter + 1;
-    if (PulseCounter >= 100 and Inpos == 0)
-    {
-      PulseCounter = 0;
-      CalAgain = 1;
-    }
-  }
-
-  // delayMicroseconds(10);
-  //=====================================================================================================
+  // Rest van je bestaande loop code
   if (Inpos == 1)
   {
-
     if (WantedRotX != ActualRotX)
     {
       // turn object  x-axis
-      for (int j = 1; j < 9; j++)
+      // nieuwe X,Y,Z coordinaten hoekpunten berekenen
+      for (int j = 0; j < 8; j++)
       {
         matrixRotX(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, ActualRotX - WantedRotX, j);
       };
@@ -399,7 +472,8 @@ void loop()
     if (WantedRotY != ActualRotY)
     {
       // turn object Y-axis
-      for (int j = 1; j < 9; j++)
+      // nieuwe X,Y,Z coordinaten hoekpunten berekenen
+      for (int j = 0; j < 8; j++)
       {
         matrixRotY(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, ActualRotY - WantedRotY, j);
       };
@@ -408,7 +482,8 @@ void loop()
     if (WantedRotZ != ActualRotZ)
     {
       // turn object Z-axis
-      for (int j = 1; j < 9; j++)
+      // nieuwe X,Y,Z coordinaten hoekpunten berekenen
+      for (int j = 0; j < 8; j++)
       {
         matrixRotZ(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, ActualRotZ - WantedRotZ, j);
       };
@@ -418,114 +493,73 @@ void loop()
     if (WantedMainX != ActualMainX or WantedMainY != ActualMainY or WantedMainZ != ActualMainZ)
     {
       // hoekpunten door de matrix halen, aan de hand van de main coordinaten
-      for (int j = 1; j < 9; j++)
+      // nieuwe X,Y,Z coordinaten hoekpunten berekenen
+      for (int j = 0; j < 8; j++)
       {
         matrixTrans(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, (ActualMainX - WantedMainX), (ActualMainY - WantedMainY), -(ActualMainZ - WantedMainZ), j);
       };
       go = 1;
     };
 
-    Mot1WantedLength = Mot1(ObjectCorner[1].X, ObjectCorner[1].Y, ObjectCorner[1].Z);
-    Mot2WantedLength = Mot2(ObjectCorner[2].X, ObjectCorner[2].Y, ObjectCorner[2].Z);
-    Mot3WantedLength = Mot3(ObjectCorner[3].X, ObjectCorner[3].Y, ObjectCorner[3].Z);
-    Mot4WantedLength = Mot4(ObjectCorner[4].X, ObjectCorner[4].Y, ObjectCorner[4].Z);
+    Mot1WantedLength = Mot1(ObjectCorner[0].X, ObjectCorner[0].Y, ObjectCorner[0].Z);
+    Mot2WantedLength = Mot2(ObjectCorner[1].X, ObjectCorner[1].Y, ObjectCorner[1].Z);
+    Mot3WantedLength = Mot3(ObjectCorner[2].X, ObjectCorner[2].Y, ObjectCorner[2].Z);
+    Mot4WantedLength = Mot4(ObjectCorner[3].X, ObjectCorner[3].Y, ObjectCorner[3].Z);
 
-    Mot5WantedLength = Mot5(ObjectCorner[5].X, ObjectCorner[5].Y, ObjectCorner[5].Z);
-    Mot6WantedLength = Mot6(ObjectCorner[6].X, ObjectCorner[6].Y, ObjectCorner[6].Z);
-    Mot7WantedLength = Mot7(ObjectCorner[7].X, ObjectCorner[7].Y, ObjectCorner[7].Z);
-    Mot8WantedLength = Mot8(ObjectCorner[8].X, ObjectCorner[8].Y, ObjectCorner[8].Z);
+    Mot5WantedLength = Mot5(ObjectCorner[4].X, ObjectCorner[4].Y, ObjectCorner[4].Z);
+    Mot6WantedLength = Mot6(ObjectCorner[5].X, ObjectCorner[5].Y, ObjectCorner[5].Z);
+    Mot7WantedLength = Mot7(ObjectCorner[6].X, ObjectCorner[6].Y, ObjectCorner[6].Z);
+    Mot8WantedLength = Mot8(ObjectCorner[7].X, ObjectCorner[7].Y, ObjectCorner[7].Z);
   };
 
-  if (go == 1 or CalAgain == 1)
+  if (go == 1 )
   {
-    CalAgain = 0;
+
     Inpos = 0;
     go = 0;
 
     // search for the longest move
+    TotalMove[0] = abs(Mot1WantedLength - Mot1ActualLength);
+    TotalMove[1] = abs(Mot2WantedLength - Mot2ActualLength);
+    TotalMove[2] = abs(Mot3WantedLength - Mot3ActualLength);
+    TotalMove[3] = abs(Mot4WantedLength - Mot4ActualLength);
 
-    TotalMove[1] = abs(Mot1WantedLength - Mot1ActualLength);
-    TotalMove[2] = abs(Mot2WantedLength - Mot2ActualLength);
-    TotalMove[3] = abs(Mot3WantedLength - Mot3ActualLength);
-    TotalMove[4] = abs(Mot4WantedLength - Mot4ActualLength);
+    TotalMove[4] = abs(Mot5WantedLength - Mot5ActualLength);
+    TotalMove[5] = abs(Mot6WantedLength - Mot6ActualLength);
+    TotalMove[6] = abs(Mot7WantedLength - Mot7ActualLength);
+    TotalMove[7] = abs(Mot8WantedLength - Mot8ActualLength);
 
-    TotalMove[5] = abs(Mot5WantedLength - Mot5ActualLength);
-    TotalMove[6] = abs(Mot6WantedLength - Mot6ActualLength);
-    TotalMove[7] = abs(Mot7WantedLength - Mot7ActualLength);
-    TotalMove[8] = abs(Mot8WantedLength - Mot8ActualLength);
-
-    long storeTemp;
-    int storeNbr;
-    bool tmpSwapped;
-  again:
-    tmpSwapped = false;
-    for (int i = 1; i < 9; i++)
+    // FIX 16-9-2026: geen sortering meer. Elke motor krijgt zijn EIGEN percentage
+    // t.o.v. de grootste beweging (oude bubble sort gaf motoren de waarde van een andere motor).
+    long maxMove = 0;
+    for (int i = 0; i < 8; i++)
     {
-      if (TotalMove[i] < TotalMove[i + 1])
-      {
-
-        storeTemp = TotalMove[i + 1];
-        TotalMove[i + 1] = TotalMove[i];
-        TotalMove[i] = storeTemp;
-
-        storeNbr = MotorNbr[i + 1];
-        MotorNbr[i + 1] = MotorNbr[i];
-        MotorNbr[i] = storeNbr;
-
-        tmpSwapped = true;
-      }
+      if (TotalMove[i] > maxMove) maxMove = TotalMove[i];
     }
-    if (tmpSwapped == 1)
-    {
-      goto again;
-    }
+    if (maxMove < 1) maxMove = 1;
 
-    Procent100 = 100.0 / TotalMove[1];
-    // Serial.print("Procent100 :  100.0 /");
-    // Serial.print(TotalMove[0]);
-    // Serial.print(" = ");
-    // Serial.println(Procent100, 4);
+    Procent100 = 100.0 / maxMove;
 
-    Mot1PulseProcent = (Procent100 * TotalMove[1]) + 0.5;
-    Mot2PulseProcent = (Procent100 * TotalMove[2]) + 0.5;
-    Mot3PulseProcent = (Procent100 * TotalMove[3]) + 0.5;
-    Mot4PulseProcent = (Procent100 * TotalMove[4]) + 0.5;
-    Mot5PulseProcent = (Procent100 * TotalMove[5]) + 0.5;
-    Mot6PulseProcent = (Procent100 * TotalMove[6]) + 0.5;
-    Mot7PulseProcent = (Procent100 * TotalMove[7]) + 0.5;
-    Mot8PulseProcent = (Procent100 * TotalMove[8]) + 0.5;
-
-    // for (int i = 0; i < 8; i++)
-    //{
-    //   Serial.print("Motornr :");
-    //  Serial.print(MotorNbr[i]);
-    //  Serial.print(" TotalMove:");
-    //  Serial.println(TotalMove[i]);
-    //}
-
-    // Serial.println(" ----------");
+    Mot1PulseProcent = (Procent100 * TotalMove[0]) + 0.5;
+    Mot2PulseProcent = (Procent100 * TotalMove[1]) + 0.5;
+    Mot3PulseProcent = (Procent100 * TotalMove[2]) + 0.5;
+    Mot4PulseProcent = (Procent100 * TotalMove[3]) + 0.5;
+    Mot5PulseProcent = (Procent100 * TotalMove[4]) + 0.5;
+    Mot6PulseProcent = (Procent100 * TotalMove[5]) + 0.5;
+    Mot7PulseProcent = (Procent100 * TotalMove[6]) + 0.5;
+    Mot8PulseProcent = (Procent100 * TotalMove[7]) + 0.5;
   }
 
   //=====================================================================================================
   // In position !
-
-  if (abs(Mot1WantedLength - Mot1ActualLength) < 25 and
-      abs(Mot2WantedLength - Mot2ActualLength) < 25 and
-      abs(Mot3WantedLength - Mot3ActualLength) < 25 and
-      abs(Mot4WantedLength - Mot4ActualLength) < 25 and
-      abs(Mot5WantedLength - Mot5ActualLength) < 25 and
-      abs(Mot6WantedLength - Mot6ActualLength) < 25 and
-      abs(Mot7WantedLength - Mot7ActualLength) < 25 and
-      abs(Mot8WantedLength - Mot8ActualLength) < 25)
-
-  // if (Mot1WantedLength == Mot1ActualLength and
-  //     Mot2WantedLength == Mot2ActualLength and
-  //     Mot3WantedLength == Mot3ActualLength and
-  //     Mot4WantedLength == Mot4ActualLength and
-  //     Mot5WantedLength == Mot5ActualLength and
-  //     Mot6WantedLength == Mot6ActualLength and
-  //     Mot7WantedLength == Mot7ActualLength and
-  //     Mot8WantedLength == Mot8ActualLength)
+  if (abs(Mot1WantedLength - Mot1ActualLength) < 2 and
+      abs(Mot2WantedLength - Mot2ActualLength) < 2 and
+      abs(Mot3WantedLength - Mot3ActualLength) < 2 and
+      abs(Mot4WantedLength - Mot4ActualLength) < 2 and
+      abs(Mot5WantedLength - Mot5ActualLength) < 2 and
+      abs(Mot6WantedLength - Mot6ActualLength) < 2 and
+      abs(Mot7WantedLength - Mot7ActualLength) < 2 and
+      abs(Mot8WantedLength - Mot8ActualLength) < 2)
   {
     ActualMainX = WantedMainX;
     ActualMainY = WantedMainY;
@@ -535,48 +569,12 @@ void loop()
     ActualRotY = WantedRotY;
     ActualRotZ = WantedRotZ;
 
-    delay(50);
-
     Inpos = 1;
-    Mot1PulseCounter = 0;
-    Mot2PulseCounter = 0;
-    Mot3PulseCounter = 0;
-    Mot4PulseCounter = 0;
-    Mot5PulseCounter = 0;
-    Mot6PulseCounter = 0;
-    Mot7PulseCounter = 0;
-    Mot8PulseCounter = 0;
-  };
-
-  //------------------------------------------------------------------------------------
-  // Control Motors
-  if (Inpos == 0)
-  {
-    Motor1();
-    Motor2();
-    Motor3();
-    Motor4();
-    //
-    Motor5();
-    Motor6();
-    Motor7();
-    Motor8();
   };
 
   if (Inpos > InposOld)
   {
-    Serial.println("InPosition");
-    Serial.print("Main :");
-    Serial.print(ActualMainX);
-    Serial.print(" , ");
-    Serial.print(ActualMainY);
-    Serial.print(" , ");
-    Serial.println(ActualMainZ);
     NextPos = 1;
-  };
-  if (Inpos < InposOld)
-  {
-    Serial.println("Moving");
   };
 
   InposOld = Inpos;
@@ -595,7 +593,7 @@ void loop()
       WantedRotZ = NewRotation[AutoCnt].Z;
 
       AutoCnt = AutoCnt + 1;
-      if (AutoCnt > 19)
+      if (AutoCnt > 23)
       {
         AutoCnt = 0;
       }
