@@ -80,6 +80,10 @@ bool InposOld = 1;
 float Procent100;
 bool CalibrationIsOn = true;
 bool go = false;
+// DEBUG 16-9-2026: tijdmeting per motor
+unsigned long moveStart = 0;
+unsigned long doneTime[8];
+bool doneFlag[8];
 
 // SIMTOOLS INTEGRATION VARIABLES
 bool simToolsMode = false;
@@ -548,9 +552,46 @@ void loop()
     Mot6PulseProcent = (Procent100 * TotalMove[5]) + 0.5;
     Mot7PulseProcent = (Procent100 * TotalMove[6]) + 0.5;
     Mot8PulseProcent = (Procent100 * TotalMove[7]) + 0.5;
+
+    moveStart = millis();
+    for (int i = 0; i < 8; i++) { doneFlag[i] = false; doneTime[i] = 0; }
+
+    // DEBUG 16-9-2026: toon per motor de geplande beweging (in loop, niet in interrupt)
+    Serial.println("---- START BEWEGING ----");
+    long wl[8] = {Mot1WantedLength, Mot2WantedLength, Mot3WantedLength, Mot4WantedLength,
+                  Mot5WantedLength, Mot6WantedLength, Mot7WantedLength, Mot8WantedLength};
+    long al[8] = {Mot1ActualLength, Mot2ActualLength, Mot3ActualLength, Mot4ActualLength,
+                  Mot5ActualLength, Mot6ActualLength, Mot7ActualLength, Mot8ActualLength};
+    int pp[8] = {Mot1PulseProcent, Mot2PulseProcent, Mot3PulseProcent, Mot4PulseProcent,
+                 Mot5PulseProcent, Mot6PulseProcent, Mot7PulseProcent, Mot8PulseProcent};
+    for (int i = 0; i < 8; i++)
+    {
+      Serial.print("M"); Serial.print(i + 1);
+      Serial.print("  van="); Serial.print(al[i]);
+      Serial.print("  naar="); Serial.print(wl[i]);
+      Serial.print("  stappen="); Serial.print(wl[i] - al[i]);
+      Serial.print("  snelheid="); Serial.print(pp[i]); Serial.println("%");
+    }
   }
 
   //=====================================================================================================
+  // DEBUG 16-9-2026: noteer per motor wanneer hij klaar is
+  if (Inpos == 0)
+  {
+    long rest[8] = {Mot1WantedLength - Mot1ActualLength, Mot2WantedLength - Mot2ActualLength,
+                    Mot3WantedLength - Mot3ActualLength, Mot4WantedLength - Mot4ActualLength,
+                    Mot5WantedLength - Mot5ActualLength, Mot6WantedLength - Mot6ActualLength,
+                    Mot7WantedLength - Mot7ActualLength, Mot8WantedLength - Mot8ActualLength};
+    for (int i = 0; i < 8; i++)
+    {
+      if (!doneFlag[i] && abs(rest[i]) <= 1)
+      {
+        doneFlag[i] = true;
+        doneTime[i] = millis() - moveStart;
+      }
+    }
+  }
+
   // In position !
   if (abs(Mot1WantedLength - Mot1ActualLength) < 2 and
       abs(Mot2WantedLength - Mot2ActualLength) < 2 and
@@ -574,6 +615,19 @@ void loop()
 
   if (Inpos > InposOld)
   {
+    // DEBUG 16-9-2026: beweging klaar, toon eindstand per motor
+    Serial.println("---- KLAAR ----");
+    long wl2[8] = {Mot1WantedLength, Mot2WantedLength, Mot3WantedLength, Mot4WantedLength,
+                   Mot5WantedLength, Mot6WantedLength, Mot7WantedLength, Mot8WantedLength};
+    long al2[8] = {Mot1ActualLength, Mot2ActualLength, Mot3ActualLength, Mot4ActualLength,
+                   Mot5ActualLength, Mot6ActualLength, Mot7ActualLength, Mot8ActualLength};
+    for (int i = 0; i < 8; i++)
+    {
+      Serial.print("M"); Serial.print(i + 1);
+      Serial.print("  staat op="); Serial.print(al2[i]);
+      Serial.print("  verschil met doel="); Serial.print(wl2[i] - al2[i]);
+      Serial.print("  klaar na "); Serial.print(doneTime[i]); Serial.println(" ms");
+    }
     NextPos = 1;
   };
 

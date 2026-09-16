@@ -9,7 +9,7 @@ void Motor2()
   Pulse2 = 0;
   if (Mot2WantedLength != Mot2ActualLength)
   {
-    if (Mot2PulseCounter >= (StepSpeed / Mot2PulseProcent))
+if (Mot2PulseCounter >= ((int)StepSpeed / max(Mot2PulseProcent, 1)))
     {
       Pulse2 = 1;
       Mot2PulseCounter = 0;

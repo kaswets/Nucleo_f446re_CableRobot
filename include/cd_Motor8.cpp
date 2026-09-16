@@ -9,7 +9,7 @@ void Motor8()
   Pulse8 = 0;
   if (Mot8WantedLength != Mot8ActualLength)
   {
-    if (Mot8PulseCounter >= (StepSpeed / Mot8PulseProcent))
+if (Mot8PulseCounter >= ((int)StepSpeed / max(Mot8PulseProcent, 1)))
     {
       Pulse8 = 1;
       Mot8PulseCounter = 0;
