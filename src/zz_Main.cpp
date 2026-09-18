@@ -99,6 +99,13 @@ const float SIMTOOLS_TRANSLATION_SCALE = 0.1;   // 10% van max translatie
 const float MAX_TRANSLATION = 25.0;  // ±25mm veilig
 const float MAX_ROTATION = 6.0;      // ±6° veilig
 
+constexpr int MaxMainX = 25;
+constexpr int MaxMainY = 20;
+constexpr int MaxMainZ = 25;
+constexpr int MaxRotX  = 6;
+constexpr int MaxRotY  = 6;
+constexpr int MaxRotZ  = 6;
+
 struct Coordinate
 {
   float X;

@@ -1,5 +1,11 @@
 // ag_ParseData.cpp - COMPLETE VERSIE MET SIMHUB + SIMTOOLS SUPPORT
 // Globale variabelen staan in main file!
+//
+// 18-9-2026: begrenzing toegevoegd op de handmatige commando's.
+//            MainX/Y/Z en RotX/Y/Z worden nu afgeknepen op de
+//            MaxMainX..MaxRotZ constanten uit zz_Main.cpp.
+//            Gevraagde waarde buiten bereik -> beweegt WEL, maar
+//            niet verder dan de grens.
 
 // Helper functie: tel komma's
 int countCommas(String str) {
@@ -16,7 +22,7 @@ int countCommas(String str) {
 void parseSimHubData(String data) {
   Serial.print("SimHub data: ");
   Serial.println(data);
-  
+
   // Call your existing SimHub parser function
   parseSimHubMotion(data);  // This calls your ah_ParseSimHubMotion.cpp function
 }
@@ -25,12 +31,12 @@ void parseSimHubData(String data) {
 void parseSimToolsData(String data) {
   Serial.print("SimTools data: ");
   Serial.println(data);
-  
+
   // Parse 6 comma-separated values
   float values[6];
   int valueIndex = 0;
   int startPos = 0;
-  
+
   for (int i = 0; i <= data.length() && valueIndex < 6; i++) {
     if (data.charAt(i) == ',' || i == data.length()) {
       String valueStr = data.substring(startPos, i);
@@ -39,7 +45,7 @@ void parseSimToolsData(String data) {
       valueIndex++;
     }
   }
-  
+
   if (valueIndex == 6) {
     // Convert SimTools range (0-1000, center=500) to motion values
     float roll = (values[0] - 500.0) / 500.0;    // -1.0 to +1.0
@@ -48,31 +54,31 @@ void parseSimToolsData(String data) {
     float surge = (values[3] - 500.0) / 500.0;
     float sway = (values[4] - 500.0) / 500.0;
     float heave = (values[5] - 500.0) / 500.0;
-    
+
     // Apply scaling and limits
-    float scaledRotX = constrain(roll * SIMTOOLS_ROTATION_SCALE * MAX_ROTATION, 
+    float scaledRotX = constrain(roll * SIMTOOLS_ROTATION_SCALE * MAX_ROTATION,
                                 -MAX_ROTATION, MAX_ROTATION);
-    float scaledRotY = constrain(pitch * SIMTOOLS_ROTATION_SCALE * MAX_ROTATION, 
+    float scaledRotY = constrain(pitch * SIMTOOLS_ROTATION_SCALE * MAX_ROTATION,
                                 -MAX_ROTATION, MAX_ROTATION);
-    float scaledRotZ = constrain(yaw * SIMTOOLS_ROTATION_SCALE * MAX_ROTATION, 
+    float scaledRotZ = constrain(yaw * SIMTOOLS_ROTATION_SCALE * MAX_ROTATION,
                                 -MAX_ROTATION, MAX_ROTATION);
-    
-    float scaledX = constrain(surge * SIMTOOLS_TRANSLATION_SCALE * MAX_TRANSLATION, 
+
+    float scaledX = constrain(surge * SIMTOOLS_TRANSLATION_SCALE * MAX_TRANSLATION,
                              -MAX_TRANSLATION, MAX_TRANSLATION);
-    float scaledY = constrain(sway * SIMTOOLS_TRANSLATION_SCALE * MAX_TRANSLATION, 
+    float scaledY = constrain(sway * SIMTOOLS_TRANSLATION_SCALE * MAX_TRANSLATION,
                              -MAX_TRANSLATION, MAX_TRANSLATION);
-    float scaledZ = constrain(heave * SIMTOOLS_TRANSLATION_SCALE * MAX_TRANSLATION, 
+    float scaledZ = constrain(heave * SIMTOOLS_TRANSLATION_SCALE * MAX_TRANSLATION,
                              -MAX_TRANSLATION, MAX_TRANSLATION);
-    
+
     // Set nieuwe motion targets
     WantedRotX = scaledRotX;
     WantedRotY = scaledRotY;
     WantedRotZ = scaledRotZ;
-    
+
     WantedMainX = scaledX;  // Relatief ten opzichte van center
     WantedMainY = scaledY;
     WantedMainZ = scaledZ;
-    
+
     // Debug output
     Serial.print("Motion -> Roll:");
     Serial.print(scaledRotX, 1);
@@ -86,11 +92,11 @@ void parseSimToolsData(String data) {
     Serial.print(scaledY, 1);
     Serial.print(" Z:");
     Serial.println(scaledZ, 1);
-    
+
     // Safety check
     float totalRotation = abs(WantedRotX) + abs(WantedRotY) + abs(WantedRotZ);
     float totalTranslation = abs(WantedMainX) + abs(WantedMainY) + abs(WantedMainZ);
-    
+
     if (totalRotation > MAX_ROTATION * 2.0 || totalTranslation > MAX_TRANSLATION * 2.0) {
       // Emergency stop
       WantedMainX = 0;
@@ -114,7 +120,7 @@ void ParseCommand(String Command)
   Serial.print("' (length: ");
   Serial.print(Command.length());
   Serial.println(")");
-  
+
   // 1. CHECK: SimHub data (SH prefix + 3 commas = 4 values)
   if (Command.startsWith("SH") && countCommas(Command) == 3) {
     parseSimHubData(Command);
@@ -122,7 +128,7 @@ void ParseCommand(String Command)
     lastSimHubData = millis();  // Update timestamp (add this variable to main)
     return;  // Stop processing, SimHub data handled
   }
-  
+
   // 2. CHECK: SimTools comma-separated data (6 values, no prefix)
   if (Command.indexOf(",") > 0 && countCommas(Command) == 5 && !Command.startsWith("SH")) {
     parseSimToolsData(Command);
@@ -130,24 +136,24 @@ void ParseCommand(String Command)
     lastSimToolsData = millis();
     return;  // Stop processing, SimTools data handled
   }
-  
+
   // 3. Manual commands (jouw bestaande code, opgeschoond)
   String partCommand;
   String partData1;
-  
+
   partCommand = Command.substring(0, Command.indexOf(" "));
-  
+
   if (Command.indexOf(" ") > 0) {
     partData1 = Command.substring(Command.indexOf(" ") + 1);
   }
-  
+
   int intData1 = partData1.toInt();
-  
+
   Serial.print("Manual command: ");
   Serial.print(partCommand);
   Serial.print(" = ");
   Serial.println(intData1);
-  
+
   // Manual command processing
   if (partCommand.equalsIgnoreCase("Report")) {
     Serial.println("=== MOTOR STATUS ===");
@@ -162,28 +168,64 @@ void ParseCommand(String Command)
     Serial.println("=== END REPORT ===");
   }
   else if (partCommand.equalsIgnoreCase("MainX")) {
-    WantedMainX = intData1;
-    Serial.print("Manual MainX set to: "); Serial.println(WantedMainX);
+    WantedMainX = constrain(intData1, -MaxMainX, MaxMainX);
+    Serial.print("Manual MainX set to: ");
+    Serial.print(WantedMainX);
+    if (intData1 != (int)WantedMainX) {
+      Serial.print("   ! BEGRENSD, gevraagd was ");
+      Serial.print(intData1);
+    }
+    Serial.println();
   }
   else if (partCommand.equalsIgnoreCase("MainY")) {
-    WantedMainY = intData1;
-    Serial.print("Manual MainY set to: "); Serial.println(WantedMainY);
+    WantedMainY = constrain(intData1, -MaxMainY, MaxMainY);
+    Serial.print("Manual MainY set to: ");
+    Serial.print(WantedMainY);
+    if (intData1 != (int)WantedMainY) {
+      Serial.print("   ! BEGRENSD, gevraagd was ");
+      Serial.print(intData1);
+    }
+    Serial.println();
   }
   else if (partCommand.equalsIgnoreCase("MainZ")) {
-    WantedMainZ = intData1;
-    Serial.print("Manual MainZ set to: "); Serial.println(WantedMainZ);
+    WantedMainZ = constrain(intData1, -MaxMainZ, MaxMainZ);
+    Serial.print("Manual MainZ set to: ");
+    Serial.print(WantedMainZ);
+    if (intData1 != (int)WantedMainZ) {
+      Serial.print("   ! BEGRENSD, gevraagd was ");
+      Serial.print(intData1);
+    }
+    Serial.println();
   }
   else if (partCommand.equalsIgnoreCase("RotX")) {
-    WantedRotX = intData1;
-    Serial.print("Manual RotX set to: "); Serial.println(WantedRotX);
+    WantedRotX = constrain(intData1, -MaxRotX, MaxRotX);
+    Serial.print("Manual RotX set to: ");
+    Serial.print(WantedRotX);
+    if (intData1 != (int)WantedRotX) {
+      Serial.print("   ! BEGRENSD, gevraagd was ");
+      Serial.print(intData1);
+    }
+    Serial.println();
   }
   else if (partCommand.equalsIgnoreCase("RotY")) {
-    WantedRotY = intData1;
-    Serial.print("Manual RotY set to: "); Serial.println(WantedRotY);
+    WantedRotY = constrain(intData1, -MaxRotY, MaxRotY);
+    Serial.print("Manual RotY set to: ");
+    Serial.print(WantedRotY);
+    if (intData1 != (int)WantedRotY) {
+      Serial.print("   ! BEGRENSD, gevraagd was ");
+      Serial.print(intData1);
+    }
+    Serial.println();
   }
   else if (partCommand.equalsIgnoreCase("RotZ")) {
-    WantedRotZ = intData1;
-    Serial.print("Manual RotZ set to: "); Serial.println(WantedRotZ);
+    WantedRotZ = constrain(intData1, -MaxRotZ, MaxRotZ);
+    Serial.print("Manual RotZ set to: ");
+    Serial.print(WantedRotZ);
+    if (intData1 != (int)WantedRotZ) {
+      Serial.print("   ! BEGRENSD, gevraagd was ");
+      Serial.print(intData1);
+    }
+    Serial.println();
   }
   else if (partCommand.equalsIgnoreCase("AutoOn")) {
     AutoMove = 1;
@@ -196,18 +238,29 @@ void ParseCommand(String Command)
     AutoMove = 0;
     Serial.println("Auto movement OFF");
   }
+  else if (partCommand.equalsIgnoreCase("Limits")) {
+    // 18-9-2026: toont de actieve begrenzingen
+    Serial.println("=== ACTIEVE LIMIETEN ===");
+    Serial.print("MainX: -"); Serial.print(MaxMainX); Serial.print(" .. +"); Serial.println(MaxMainX);
+    Serial.print("MainY: -"); Serial.print(MaxMainY); Serial.print(" .. +"); Serial.println(MaxMainY);
+    Serial.print("MainZ: -"); Serial.print(MaxMainZ); Serial.print(" .. +"); Serial.println(MaxMainZ);
+    Serial.print("RotX : -"); Serial.print(MaxRotX);  Serial.print(" .. +"); Serial.println(MaxRotX);
+    Serial.print("RotY : -"); Serial.print(MaxRotY);  Serial.print(" .. +"); Serial.println(MaxRotY);
+    Serial.print("RotZ : -"); Serial.print(MaxRotZ);  Serial.print(" .. +"); Serial.println(MaxRotZ);
+    Serial.println("=== END LIMITS ===");
+  }
   else if (partCommand.equalsIgnoreCase("Status")) {
     Serial.println("=== CURRENT STATUS ===");
-    Serial.print("Position: X="); Serial.print(ActualMainX); 
-    Serial.print(" Y="); Serial.print(ActualMainY); 
+    Serial.print("Position: X="); Serial.print(ActualMainX);
+    Serial.print(" Y="); Serial.print(ActualMainY);
     Serial.print(" Z="); Serial.println(ActualMainZ);
-    Serial.print("Rotation: RX="); Serial.print(ActualRotX); 
-    Serial.print(" RY="); Serial.print(ActualRotY); 
+    Serial.print("Rotation: RX="); Serial.print(ActualRotX);
+    Serial.print(" RY="); Serial.print(ActualRotY);
     Serial.print(" RZ="); Serial.println(ActualRotZ);
     Serial.print("InPos: "); Serial.println(Inpos ? "YES" : "NO");
     Serial.print("AutoMove: "); Serial.println(AutoMove ? "ON" : "OFF");
     Serial.print("SimTools: "); Serial.println(simToolsMode ? "ACTIVE" : "INACTIVE");
-    
+
     // Add SimHub status
     Serial.print("SimHub: ");
     if (millis() - lastSimHubData < 2000) {
@@ -230,6 +283,6 @@ void ParseCommand(String Command)
   else {
     Serial.print("Unknown command: ");
     Serial.println(partCommand);
-    Serial.println("Available commands: MainX, MainY, MainZ, RotX, RotY, RotZ, AutoOn, AutoOff, Report, Status, Center");
+    Serial.println("Available commands: MainX, MainY, MainZ, RotX, RotY, RotZ, AutoOn, AutoOff, Report, Status, Limits, Center");
   }
 }
