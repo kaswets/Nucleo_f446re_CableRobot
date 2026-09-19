@@ -47,7 +47,7 @@ float WidthBlockBottom = 48;
 float HighBlock = 41;
 
 float LengthBlockTop = 68;
-float WidthBlockTop = 78;
+float WidthBlockTop = 100;
 
 float LengthFrame = 325;
 float WidhtFrame = 210;
