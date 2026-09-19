@@ -103,9 +103,9 @@ const float MAX_ROTATION = 6.0;      // ±6° veilig
 constexpr int MaxMainX = 25;
 constexpr int MaxMainY = 20;
 constexpr int MaxMainZ = 25;
-constexpr int MaxRotX  = 6;
-constexpr int MaxRotY  = 6;
-constexpr int MaxRotZ  = 6;
+constexpr int MaxRotX  = 20;
+constexpr int MaxRotY  = 20;
+constexpr int MaxRotZ  = 20;
 
 struct Coordinate
 {
@@ -120,6 +120,13 @@ struct Rotation
   float Z;
 };
 struct Coordinate ObjectCorner[8];
+
+// FIX 19-9-2026: vaste, ongeroteerde basispositie van elke hoek t.o.v. het platformcentrum.
+// Hieruit wordt ELKE cyclus vers de actuele hoekpositie herberekend (nooit incrementeel
+// vanaf de vorige stand), zodat er geen afrondingsfouten kunnen opstapelen.
+float BaseCornerX[8];
+float BaseCornerY[8];
+float BaseCornerZ[8];
 
 struct Coordinate NewPosition[24] = {{0, 0, 0},
                                      {0, 0, -5},
@@ -285,6 +292,7 @@ HardwareTimer timer(TIM1);
 
 // Function declarations - MUST BE BEFORE INCLUDES
 void parseSimHubMotion(String data);  // ADDED FOR SIMHUB SUPPORT
+void RecomputeCorners();  // FIX 19-9-2026: hoekpunten elke cyclus vers vanaf de basisvorm
 
 #include "ab_Pythagoras.cpp"
 #include "acos1.cpp"
@@ -349,6 +357,41 @@ void OnTimer1Interrupt()
   };
 }
 
+// FIX 19-9-2026: berekent de 8 hoekpunten (ObjectCorner) en de bijbehorende
+// motor-doellengtes ELKE keer vers vanaf de vaste, ongeroteerde basisvorm
+// (BaseCornerX/Y/Z) plus de HUIDIGE gewenste pose (WantedMainX/Y/Z, WantedRotX/Y/Z).
+// Er wordt nooit meer vanaf de vorige ObjectCorner-stand verder gerekend, zodat er
+// geen afrondingsfouten kunnen opstapelen, ongeacht hoe vaak dit wordt aangeroepen.
+void RecomputeCorners()
+{
+  for (int j = 0; j < 8; j++)
+  {
+    // Start steeds vanaf de vaste basispositie van deze hoek
+    ObjectCorner[j].X = BaseCornerX[j];
+    ObjectCorner[j].Y = BaseCornerY[j];
+    ObjectCorner[j].Z = BaseCornerZ[j];
+
+    // Absolute rotatie toepassen (zelfde teken-conventie als de oorspronkelijke code,
+    // die "ActualRot - WantedRot" gebruikte; hier is de basis altijd op 0 gedefinieerd)
+    matrixRotX(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, -WantedRotX, j);
+    matrixRotY(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, -WantedRotY, j);
+    matrixRotZ(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, -WantedRotZ, j);
+
+    // Absolute verplaatsing toepassen (zelfde teken-conventie als de oorspronkelijke code)
+    matrixTrans(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, -WantedMainX, -WantedMainY, WantedMainZ, j);
+  }
+
+  Mot1WantedLength = Mot1(ObjectCorner[0].X, ObjectCorner[0].Y, ObjectCorner[0].Z);
+  Mot2WantedLength = Mot2(ObjectCorner[1].X, ObjectCorner[1].Y, ObjectCorner[1].Z);
+  Mot3WantedLength = Mot3(ObjectCorner[2].X, ObjectCorner[2].Y, ObjectCorner[2].Z);
+  Mot4WantedLength = Mot4(ObjectCorner[3].X, ObjectCorner[3].Y, ObjectCorner[3].Z);
+
+  Mot5WantedLength = Mot5(ObjectCorner[4].X, ObjectCorner[4].Y, ObjectCorner[4].Z);
+  Mot6WantedLength = Mot6(ObjectCorner[5].X, ObjectCorner[5].Y, ObjectCorner[5].Z);
+  Mot7WantedLength = Mot7(ObjectCorner[6].X, ObjectCorner[6].Y, ObjectCorner[6].Z);
+  Mot8WantedLength = Mot8(ObjectCorner[7].X, ObjectCorner[7].Y, ObjectCorner[7].Z);
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -383,54 +426,29 @@ void setup()
   pinMode(oDir8, OUTPUT);
   pinMode(oStep8, OUTPUT);
 
-  // Setup Array by start programma
-  ObjectCorner[0].X = ActualMainX - (LengthBlockBottom / 2.0);
-  ObjectCorner[0].Y = ActualMainY - (WidthBlockBottom / 2.0);
-  ObjectCorner[0].Z = ActualMainZ - (HighBlock / 2.0);
-  Mot1ActualLength = Mot1(ObjectCorner[0].X, ObjectCorner[0].Y, ObjectCorner[0].Z);
-  Mot1WantedLength = Mot1ActualLength;
+  // FIX 19-9-2026: vaste basispositie van elke hoek (ongeroteerd, t.o.v. platformcentrum = 0,0,0).
+  // Deze waarden veranderen nooit meer tijdens het draaien - alle beweging wordt hieruit
+  // vers herberekend, zodat er geen fouten kunnen opstapelen over meerdere commando's heen.
+  BaseCornerX[0] = -(LengthBlockBottom / 2.0); BaseCornerY[0] = -(WidthBlockBottom / 2.0); BaseCornerZ[0] = -(HighBlock / 2.0);
+  BaseCornerX[1] = -(LengthBlockBottom / 2.0); BaseCornerY[1] =  (WidthBlockBottom / 2.0); BaseCornerZ[1] = -(HighBlock / 2.0);
+  BaseCornerX[2] =  (LengthBlockBottom / 2.0); BaseCornerY[2] = -(WidthBlockBottom / 2.0); BaseCornerZ[2] = -(HighBlock / 2.0);
+  BaseCornerX[3] =  (LengthBlockBottom / 2.0); BaseCornerY[3] =  (WidthBlockBottom / 2.0); BaseCornerZ[3] = -(HighBlock / 2.0);
 
-  ObjectCorner[1].X = ActualMainX - (LengthBlockBottom / 2.0);
-  ObjectCorner[1].Y = ActualMainY + (WidthBlockBottom / 2.0);
-  ObjectCorner[1].Z = ActualMainZ - (HighBlock / 2.0);
-  Mot2ActualLength = Mot2(ObjectCorner[1].X, ObjectCorner[1].Y, ObjectCorner[1].Z);
-  Mot2WantedLength = Mot2ActualLength;
+  BaseCornerX[4] = -(LengthBlockTop / 2.0); BaseCornerY[4] = -(WidthBlockTop / 2.0); BaseCornerZ[4] = (HighBlock / 2.0);
+  BaseCornerX[5] = -(LengthBlockTop / 2.0); BaseCornerY[5] =  (WidthBlockTop / 2.0); BaseCornerZ[5] = (HighBlock / 2.0);
+  BaseCornerX[6] =  (LengthBlockTop / 2.0); BaseCornerY[6] = -(WidthBlockTop / 2.0); BaseCornerZ[6] = (HighBlock / 2.0);
+  BaseCornerX[7] =  (LengthBlockTop / 2.0); BaseCornerY[7] =  (WidthBlockTop / 2.0); BaseCornerZ[7] = (HighBlock / 2.0);
 
-  ObjectCorner[2].X = ActualMainX + (LengthBlockBottom / 2.0);
-  ObjectCorner[2].Y = ActualMainY - (WidthBlockBottom / 2.0);
-  ObjectCorner[2].Z = ActualMainZ - (HighBlock / 2.0);
-  Mot3ActualLength = Mot3(ObjectCorner[2].X, ObjectCorner[2].Y, ObjectCorner[2].Z);
-  Mot3WantedLength = Mot3ActualLength;
-
-  ObjectCorner[3].X = ActualMainX + (LengthBlockBottom / 2.0);
-  ObjectCorner[3].Y = ActualMainY + (WidthBlockBottom / 2.0);
-  ObjectCorner[3].Z = ActualMainZ - (HighBlock / 2.0);
-  Mot4ActualLength = Mot4(ObjectCorner[3].X, ObjectCorner[3].Y, ObjectCorner[3].Z);
-  Mot4WantedLength = Mot4ActualLength;
-
-  ObjectCorner[4].X = ActualMainX - (LengthBlockTop / 2.0);
-  ObjectCorner[4].Y = ActualMainY - (WidthBlockTop / 2.0);
-  ObjectCorner[4].Z = ActualMainZ + (HighBlock / 2.0);
-  Mot5ActualLength = Mot5(ObjectCorner[4].X, ObjectCorner[4].Y, ObjectCorner[4].Z);
-  Mot5WantedLength = Mot5ActualLength;
-
-  ObjectCorner[5].X = ActualMainX - (LengthBlockTop / 2.0);
-  ObjectCorner[5].Y = ActualMainY + (WidthBlockTop / 2.0);
-  ObjectCorner[5].Z = ActualMainZ + (HighBlock / 2.0);
-  Mot6ActualLength = Mot6(ObjectCorner[5].X, ObjectCorner[5].Y, ObjectCorner[5].Z);
-  Mot6WantedLength = Mot6ActualLength;
-
-  ObjectCorner[6].X = ActualMainX + (LengthBlockTop / 2.0);
-  ObjectCorner[6].Y = ActualMainY - (WidthBlockTop / 2.0);
-  ObjectCorner[6].Z = ActualMainZ + (HighBlock / 2.0);
-  Mot7ActualLength = Mot7(ObjectCorner[6].X, ObjectCorner[6].Y, ObjectCorner[6].Z);
-  Mot7WantedLength = Mot7ActualLength;
-
-  ObjectCorner[7].X = ActualMainX + (LengthBlockTop / 2.0);
-  ObjectCorner[7].Y = ActualMainY + (WidthBlockTop / 2.0);
-  ObjectCorner[7].Z = ActualMainZ + (HighBlock / 2.0);
-  Mot8ActualLength = Mot8(ObjectCorner[7].X, ObjectCorner[7].Y, ObjectCorner[7].Z);
-  Mot8WantedLength = Mot8ActualLength;
+  // Hoekpunten en motorlengtes voor de start-pose (alles 0) berekenen en als "aangekomen" markeren
+  RecomputeCorners();
+  Mot1ActualLength = Mot1WantedLength;
+  Mot2ActualLength = Mot2WantedLength;
+  Mot3ActualLength = Mot3WantedLength;
+  Mot4ActualLength = Mot4WantedLength;
+  Mot5ActualLength = Mot5WantedLength;
+  Mot6ActualLength = Mot6WantedLength;
+  Mot7ActualLength = Mot7WantedLength;
+  Mot8ActualLength = Mot8WantedLength;
 
   // Configure timer
   timer.setPrescaleFactor(2564);              // Set prescaler to 2564 => timer frequency = 168MHz/2564 = 65522 Hz (from prediv'd by 1 clocksource of 168 MHz)
@@ -469,86 +487,40 @@ void loop()
   checkSimToolsTimeout();
 
   // Rest van je bestaande loop code
-  if (Inpos == 1)
+  // FIX 19-9-2026: hoekpunten en motor-doellengtes ELKE cyclus vers herberekenen vanaf de
+  // vaste basisvorm (zie RecomputeCorners hieronder) - nooit meer incrementeel vanaf de
+  // vorige, mogelijk al afgeweken stand. Dit voorkomt dat kleine afrondingsfouten zich
+  // opstapelen, ook als er (zoals bij SimHub/een spel) continu nieuwe doelen binnenkomen
+  // terwijl het platform nog niet "klaar" is met de vorige beweging.
+  RecomputeCorners();
+
+  // Snelheidsverhouding tussen de motoren elke cyclus opnieuw bepalen, zodat ze synchroon
+  // blijven aankomen - ook als het doel ondertussen weer verandert.
+  TotalMove[0] = abs(Mot1WantedLength - Mot1ActualLength);
+  TotalMove[1] = abs(Mot2WantedLength - Mot2ActualLength);
+  TotalMove[2] = abs(Mot3WantedLength - Mot3ActualLength);
+  TotalMove[3] = abs(Mot4WantedLength - Mot4ActualLength);
+
+  TotalMove[4] = abs(Mot5WantedLength - Mot5ActualLength);
+  TotalMove[5] = abs(Mot6WantedLength - Mot6ActualLength);
+  TotalMove[6] = abs(Mot7WantedLength - Mot7ActualLength);
+  TotalMove[7] = abs(Mot8WantedLength - Mot8ActualLength);
+
+  long maxMove = 0;
+  for (int i = 0; i < 8; i++)
   {
-    if (WantedRotX != ActualRotX)
-    {
-      // turn object  x-axis
-      // nieuwe X,Y,Z coordinaten hoekpunten berekenen
-      for (int j = 0; j < 8; j++)
-      {
-        matrixRotX(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, ActualRotX - WantedRotX, j);
-      };
-      go = 1;
-    };
-    if (WantedRotY != ActualRotY)
-    {
-      // turn object Y-axis
-      // nieuwe X,Y,Z coordinaten hoekpunten berekenen
-      for (int j = 0; j < 8; j++)
-      {
-        matrixRotY(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, ActualRotY - WantedRotY, j);
-      };
-      go = 1;
-    };
-    if (WantedRotZ != ActualRotZ)
-    {
-      // turn object Z-axis
-      // nieuwe X,Y,Z coordinaten hoekpunten berekenen
-      for (int j = 0; j < 8; j++)
-      {
-        matrixRotZ(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, ActualRotZ - WantedRotZ, j);
-      };
-      go = 1;
-    };
+    if (TotalMove[i] > maxMove) maxMove = TotalMove[i];
+  }
 
-    if (WantedMainX != ActualMainX or WantedMainY != ActualMainY or WantedMainZ != ActualMainZ)
-    {
-      // hoekpunten door de matrix halen, aan de hand van de main coordinaten
-      // nieuwe X,Y,Z coordinaten hoekpunten berekenen
-      for (int j = 0; j < 8; j++)
-      {
-        matrixTrans(ObjectCorner[j].X, ObjectCorner[j].Y, ObjectCorner[j].Z, (ActualMainX - WantedMainX), (ActualMainY - WantedMainY), -(ActualMainZ - WantedMainZ), j);
-      };
-      go = 1;
-    };
-
-    Mot1WantedLength = Mot1(ObjectCorner[0].X, ObjectCorner[0].Y, ObjectCorner[0].Z);
-    Mot2WantedLength = Mot2(ObjectCorner[1].X, ObjectCorner[1].Y, ObjectCorner[1].Z);
-    Mot3WantedLength = Mot3(ObjectCorner[2].X, ObjectCorner[2].Y, ObjectCorner[2].Z);
-    Mot4WantedLength = Mot4(ObjectCorner[3].X, ObjectCorner[3].Y, ObjectCorner[3].Z);
-
-    Mot5WantedLength = Mot5(ObjectCorner[4].X, ObjectCorner[4].Y, ObjectCorner[4].Z);
-    Mot6WantedLength = Mot6(ObjectCorner[5].X, ObjectCorner[5].Y, ObjectCorner[5].Z);
-    Mot7WantedLength = Mot7(ObjectCorner[6].X, ObjectCorner[6].Y, ObjectCorner[6].Z);
-    Mot8WantedLength = Mot8(ObjectCorner[7].X, ObjectCorner[7].Y, ObjectCorner[7].Z);
-  };
-
-  if (go == 1 )
+  if (maxMove >= 1)
   {
-
-    Inpos = 0;
-    go = 0;
-
-    // search for the longest move
-    TotalMove[0] = abs(Mot1WantedLength - Mot1ActualLength);
-    TotalMove[1] = abs(Mot2WantedLength - Mot2ActualLength);
-    TotalMove[2] = abs(Mot3WantedLength - Mot3ActualLength);
-    TotalMove[3] = abs(Mot4WantedLength - Mot4ActualLength);
-
-    TotalMove[4] = abs(Mot5WantedLength - Mot5ActualLength);
-    TotalMove[5] = abs(Mot6WantedLength - Mot6ActualLength);
-    TotalMove[6] = abs(Mot7WantedLength - Mot7ActualLength);
-    TotalMove[7] = abs(Mot8WantedLength - Mot8ActualLength);
-
-    // FIX 16-9-2026: geen sortering meer. Elke motor krijgt zijn EIGEN percentage
-    // t.o.v. de grootste beweging (oude bubble sort gaf motoren de waarde van een andere motor).
-    long maxMove = 0;
-    for (int i = 0; i < 8; i++)
+    if (Inpos == 1)
     {
-      if (TotalMove[i] > maxMove) maxMove = TotalMove[i];
+      // Nieuwe beweging start vanuit stilstand: tijdmeting resetten
+      moveStart = millis();
+      for (int i = 0; i < 8; i++) { doneFlag[i] = false; doneTime[i] = 0; }
     }
-    if (maxMove < 1) maxMove = 1;
+    Inpos = 0;
 
     Procent100 = 100.0 / maxMove;
 
@@ -560,26 +532,6 @@ void loop()
     Mot6PulseProcent = (Procent100 * TotalMove[5]) + 0.5;
     Mot7PulseProcent = (Procent100 * TotalMove[6]) + 0.5;
     Mot8PulseProcent = (Procent100 * TotalMove[7]) + 0.5;
-
-    moveStart = millis();
-    for (int i = 0; i < 8; i++) { doneFlag[i] = false; doneTime[i] = 0; }
-
-    // DEBUG 16-9-2026: toon per motor de geplande beweging (in loop, niet in interrupt)
-    Serial.println("---- START BEWEGING ----");
-    long wl[8] = {Mot1WantedLength, Mot2WantedLength, Mot3WantedLength, Mot4WantedLength,
-                  Mot5WantedLength, Mot6WantedLength, Mot7WantedLength, Mot8WantedLength};
-    long al[8] = {Mot1ActualLength, Mot2ActualLength, Mot3ActualLength, Mot4ActualLength,
-                  Mot5ActualLength, Mot6ActualLength, Mot7ActualLength, Mot8ActualLength};
-    int pp[8] = {Mot1PulseProcent, Mot2PulseProcent, Mot3PulseProcent, Mot4PulseProcent,
-                 Mot5PulseProcent, Mot6PulseProcent, Mot7PulseProcent, Mot8PulseProcent};
-    for (int i = 0; i < 8; i++)
-    {
-      Serial.print("M"); Serial.print(i + 1);
-      Serial.print("  van="); Serial.print(al[i]);
-      Serial.print("  naar="); Serial.print(wl[i]);
-      Serial.print("  stappen="); Serial.print(wl[i] - al[i]);
-      Serial.print("  snelheid="); Serial.print(pp[i]); Serial.println("%");
-    }
   }
 
   //=====================================================================================================

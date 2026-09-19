@@ -20,8 +20,8 @@ int countCommas(String str) {
 
 // SimHub data parser (call your existing ah_ParseSimHubMotion function)
 void parseSimHubData(String data) {
-  Serial.print("SimHub data: ");
-  Serial.println(data);
+  // Serial.print("SimHub data: ");
+  // Serial.println(data);
 
   // Call your existing SimHub parser function
   parseSimHubMotion(data);  // This calls your ah_ParseSimHubMotion.cpp function

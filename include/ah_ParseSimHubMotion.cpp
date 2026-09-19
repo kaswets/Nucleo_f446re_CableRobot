@@ -65,38 +65,39 @@ void parseSimHubMotion(String data) {
         if (abs(WantedRotY) < 0.2) WantedRotY = 0;
     }
 
-    // Anti-tril filtering (verbeterd van jouw originele code)
-    if (abs(WantedMainZ - ActualMainZ) < 1) WantedMainZ = ActualMainZ;
+    // FIX 19-9-2026: anti-tril drempel hier weggehaald - die verslikte zich ook in kleine,
+    // bewust bedoelde commando's (zoals een testbeweging van 2mm) en is niet meer nodig nu
+    // RecomputeCorners() elke cyclus vers rekent i.p.v. incrementeel opstapelt.
     if (abs(WantedRotX) < 0.5) WantedRotX = 0;  // Smaller deadzone for rotations
     if (abs(WantedRotY) < 0.5) WantedRotY = 0;
 
     // Enhanced debug output
-    Serial.print("SH Raw: FL=");
-    Serial.print(FL); Serial.print(" FR="); Serial.print(FR);
-    Serial.print(" RL="); Serial.print(RL); Serial.print(" RR=");
-    Serial.print(RR);
+    // Serial.print("SH Raw: FL=");
+    // Serial.print(FL); Serial.print(" FR="); Serial.print(FR);
+    // Serial.print(" RL="); Serial.print(RL); Serial.print(" RR=");
+    // Serial.print(RR);
     
-    Serial.print(" | Avg: All="); Serial.print(avgAll, 1);
-    Serial.print(" L="); Serial.print(avgLeft, 1); 
-    Serial.print(" R="); Serial.print(avgRight, 1);
-    Serial.print(" F="); Serial.print(avgFront, 1);
-    Serial.print(" Rear="); Serial.println(avgRear, 1);
+    // Serial.print(" | Avg: All="); Serial.print(avgAll, 1);
+    // Serial.print(" L="); Serial.print(avgLeft, 1); 
+    // Serial.print(" R="); Serial.print(avgRight, 1);
+    // Serial.print(" F="); Serial.print(avgFront, 1);
+    // Serial.print(" Rear="); Serial.println(avgRear, 1);
 
-    Serial.print("SH Motion: Z=");
-    Serial.print(WantedMainZ); Serial.print("mm");
-    Serial.print(" RotX="); Serial.print(WantedRotX, 1); Serial.print("°");
-    Serial.print(" RotY="); Serial.print(WantedRotY, 1); Serial.println("°");
+    // Serial.print("SH Motion: Z=");
+    // Serial.print(WantedMainZ); Serial.print("mm");
+    // Serial.print(" RotX="); Serial.print(WantedRotX, 1); Serial.print("°");
+    // Serial.print(" RotY="); Serial.print(WantedRotY, 1); Serial.println("°");
     
     // Safety check - emergency stop bij extreme waarden
     if (abs(WantedMainZ) > 25 || abs(WantedRotX) > 8 || abs(WantedRotY) > 8) {
         WantedMainZ = constrain(WantedMainZ, -20, 20);  // Force within safe limits
         WantedRotX = constrain(WantedRotX, -6, 6); 
         WantedRotY = constrain(WantedRotY, -6, 6);
-        Serial.println("SH SAFETY: Motion limited to safe range!");
+        // Serial.println("SH SAFETY: Motion limited to safe range!");
     }
     
     // Update SimHub activity timestamp
     lastSimHubData = millis();
 
-    Serial.println("SH PARSED!"); // Simple test message
+    // Serial.println("SH PARSED!"); // Simple test message
 }
